@@ -32,3 +32,27 @@ Do not hand-copy knowledge into this repo. A local copy is invisible to the hub'
 exact drift this arrangement exists to prevent.
 
 <!-- /crucible:core -->
+
+## Working in this repo
+
+**Originals are read-only, forever.** [CONTRACT.md](CONTRACT.md) is the invariant everything
+else is built around — read it before changing anything that touches a path.
+
+- **Never write to `D:\iCloudPhotos\Photos`**, to `C:\Users\terri\iCloudPhotos` (a junction to
+  the same bytes), or to any other library root. Every artifact goes under `derived/`.
+- The library is a **live iCloud sync root**. `verify` against it reports hundreds of drifted
+  files that are not ours, so layer 3 is inoperative there. The pipeline runs against an
+  isolated working copy.
+- Absolute file counts for the library belong in `CALL_TREE.md` §4.0 and nowhere else. It is
+  still syncing and gains thousands of files an hour; a count copied into another file is
+  wrong within the hour and nothing will tell you.
+- Entry point is `.\run <command>` — not `python src/cli.py`. `--derived` is global and must
+  precede the subcommand.
+
+```powershell
+.\run test     # 40 tests, 1 skipped, stdlib unittest
+.\run audit    # contract layers 1+2, mechanized
+```
+
+Stage 0 is the entire built surface. Everything in `CALL_TREE.md` §4.1–§4.9 is unwritten, and
+the blocker is data, not code — there are no readable photographs on this machine yet.

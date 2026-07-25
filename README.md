@@ -9,7 +9,7 @@ Read [CONTRACT.md](CONTRACT.md) first. It is the invariant everything else is bu
 ## Status
 
 **Stage 0 (discover + inventory + census) is built, tested, and has run against the real
-library.** Stages 1–8 are designed in [CALL_TREE.md](CALL_TREE.md) but not implemented.
+library.** Stages 1–9 are designed in [CALL_TREE.md](CALL_TREE.md) but not implemented.
 Stage 0's job is to answer "what is this library, actually?" before any architecture is
 committed to — and on the first real run it did exactly that, with an answer that changed
 the plan (see below).
@@ -33,16 +33,20 @@ defaults to `./derived`, and may never resolve inside the library — the contra
 
 ## What the first real run found
 
-The library is at `D:\iCloudPhotos\Photos` — **19,508 media files, 201 GB, every one of them a
-dehydrated cloud placeholder**, and still growing as iCloud syncs. `C:\Users\terri\iCloudPhotos`
-is a *junction* to it, not a second library.
+The library is at `D:\iCloudPhotos\Photos` — **tens of thousands of media files, every one of
+them a dehydrated cloud placeholder**, and still growing fast as iCloud syncs.
+`C:\Users\terri\iCloudPhotos` is a *junction* to it, not a second library. Absolute counts and
+the growth curve live in [CALL_TREE.md](CALL_TREE.md) §4.0 and nowhere else — this library
+gains thousands of files an hour, so a number written down here would be wrong by the time you
+read it.
 
 Four consequences, all of which outrank any code in this repo:
 
 - **No stage past 0 can read a byte** until the files are local. Zero assets are indexed.
-- **Hydrating in place is now possible** — 201 GB against 930 GB free on `D:`. An earlier
-  revision of this file said it was not, because it believed the library was a 475 GB tree on
-  `C:` with 64 GB free. That was two paths to one library counted twice.
+- **Hydrating in place is now possible** — the library fits several times over in the 930 GB
+  free on `D:`. An earlier revision of this file said it was not, because it believed the
+  library was a 475 GB tree on `C:` with 64 GB free. That was two paths to one library counted
+  twice.
 - **HEIC is 71% of the files**, not absent. An earlier revision said there was none and
   concluded the library was a lossy JPEG derivative of originals still on the phone. It is
   not, and that removes the main argument for a USB pull.
@@ -50,15 +54,16 @@ Four consequences, all of which outrank any code in this repo:
   twenty minutes — iCloud writing, not us. Work happens on an isolated copy; see
   [CONTRACT.md](CONTRACT.md).
 
-The `(n)` suffix on ~4,000 files is *not* duplication: 4,299 of 4,330 variants differ in size
-from their base. They are distinct photos that collided on filename because iPhone recycles
-`IMG_nnnn`. A name-based dedup here would delete thousands of real photographs.
+The `(n)` suffix carried by roughly a quarter of the files is *not* duplication: when tested,
+4,299 of 4,330 variants differed in size from their base — only 21 matched. They are distinct
+photos that collided on filename because iPhone recycles `IMG_nnnn`. A name-based dedup here
+would delete thousands of real photographs.
 
 ## Why the pipeline is staged
 
 Each stage is idempotent and keyed by content fingerprint, so any of them can be interrupted
-and resumed. This is not fastidiousness — face embedding 100k photos runs for hours, and a
-job you cannot resume is a job you will never finish.
+and resumed. This is not fastidiousness — face embedding a library this size runs for hours,
+and a job you cannot resume is a job you will never finish.
 
 Numbering is [CALL_TREE.md](CALL_TREE.md)'s 0–9 — the two files used to disagree, and this
 table was the one that gave.
@@ -78,7 +83,7 @@ table was the one that gave.
 
 ## The two design decisions that matter
 
-**Cross-age identity (stage 3) is the hard problem, and no off-the-shelf tool solves it.**
+**Cross-age identity (stage 4) is the hard problem, and no off-the-shelf tool solves it.**
 Face embeddings are trained for adult identity invariance; a child from age 2 to age 15 gets
 split into several separate "people" by every library that clusters globally — Immich
 included. The approach here is to cluster within ~6-month windows, then chain adjacent
@@ -89,7 +94,7 @@ that has to be built rather than bought.
 **Quality scoring leads with objective metrics, not the aesthetic model.** Off-the-shelf
 aesthetic scorers (CLIP+MLP, NIMA) are trained on crowd taste over generative imagery. A
 family archive is a different distribution: a slightly soft, badly lit photo of your kid
-laughing is a keeper that a LAION-trained head scores near the floor. So stage 4 leads with
+laughing is a keeper that a LAION-trained head scores near the floor. So stage 5 leads with
 distribution-independent measurements — sharpness *on the face crop*, exposure clipping,
 eyes-open — and uses the aesthetic model only as a tiebreaker within an event, calibrated
 against a hand-labeled sample.

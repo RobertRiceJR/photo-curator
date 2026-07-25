@@ -11,11 +11,11 @@ Scope: the full curation pipeline over a large personal library. The goal it is 
 backwards from: *given "my son," return the good photos of him across every year, tagged and
 organized, without ever touching an original.*
 
-**What is actually on disk today** — 1,209 lines in `src/`, 574 in `tests/`:
+**What is actually on disk today** — 1,235 lines in `src/`, 675 in `tests/`:
 
 ```
-cli.py 172 · contract.py 213 · db.py 270 · discover.py 145 · inventory.py 253 · meta.py 156
-tests/test_core.py 376 · tests/test_contract_paths.py 198    35 tests, 1 skipped, all passing
+cli.py 175 · contract.py 213 · db.py 270 · discover.py 145 · inventory.py 276 · meta.py 156
+tests/test_core.py 477 · tests/test_contract_paths.py 198    40 tests, 1 skipped, all passing
 ```
 
 There is no `pipeline.py`, `media.py`, `models.py`, `store.py`, or `scripts/`. Every module
@@ -207,8 +207,13 @@ version of this document.
 | index | root | walked | placeholders | indexed |
 |---|---|---|---|---|
 | `derived/` | `C:\Users\terri\OneDrive\Pictures` | 397 | 259 (65%) | **138** |
-| `derived-icloud/` | `C:\Users\terri\iCloudPhotos\Photos` | 33,095 | 33,093 (99.99%) | **2** |
+| `derived-icloud/` | `C:\Users\terri\iCloudPhotos\Photos` | 33,095 ⚠ | 33,093 (99.99%) | **2** |
 | `derived-d/` | `D:\iCloudPhotos\Photos` | 16,756 | 16,756 (100%) | **0** |
+
+`⚠` That row is **not a third library and not a real count.** It is the `D:` library reached
+through the junction, mid-sync, walked at a different moment than the row below it. Both iCloud
+rows describe the same bytes. The number is retained only because the sections below argue
+against it.
 
 `❗` **Three facts in the previous revision were wrong. All three mattered.**
 
@@ -219,15 +224,21 @@ is the multi-path case `paths`/`assets` exists to handle and the likeliest expla
 33,095 figure. **The storage blocker is resolved**: ~201 GB of library against 930 GB free.
 
 **There is HEIC, and it is the dominant format** — 12,141 of 17,257 files (71%) at the time of
-measurement. The claim that iCloud for Windows stores only JPEG conversions is false for this
+measurement, and still 71% (19,774 of 27,804) when re-measured ten thousand files later. Both
+denominators are mid-sync snapshots; the *ratio* is the durable finding, not either count. The claim that iCloud for Windows stores only JPEG conversions is false for this
 library, which removes the main argument for pulling originals off the phone over USB. The
 files are real iPhone HEICs and carry EXIF, so `same_device` in §4.4 will be populated once
 they are readable.
 
 **The library is mid-sync and was growing throughout the session** — media file count
 measured at 15,255 → 15,505 → 16,506 → 16,756 → 17,035 → 17,257 → **19,508 (201.1 GB)** over
-roughly ninety minutes. Any census taken against this root is a moving target, including the
-one in the table above. The final size is not yet known.
+roughly ninety minutes, and **27,804 (217.9 GB)** at 07:01 the following morning — a further
+43% with no sign of tapering. Any census taken against this root is a moving target, including
+the one in the table above. The final size is not yet known.
+
+**This section is the only place in the repo that carries absolute figures for this library.**
+Every other file defers here rather than freezing a number of its own, because a number written
+down elsewhere is wrong within the hour and there is no mechanism that would tell you.
 
 **It is still 100% dehydrated.** Zero assets indexed, zero bytes readable. The blocker is
 unchanged in force, only in remedy: hydrate in place on D: (now possible) rather than pull
@@ -241,7 +252,8 @@ is not an identity key in this library, a name-based dedup would have destroyed 
 real photos, and the content fingerprint in `inventory.fingerprint` is doing necessary work
 rather than being fastidious.
 
-**The tree is a single flat folder** — 19,508 files, no subdirectories. §4.4 depends on this.
+**The tree is a single flat folder** — every media file at the root, no subdirectories at any
+count. §4.4 depends on this, and it depends on the *shape*, not the size.
 
 **The 138 "readable" OneDrive assets are not photographs.** 134 of them are
 `OneDrive\Pictures\Overwolf\MetaTFT\*.jpeg` — game-overlay screenshots — and the remaining 4
@@ -613,7 +625,7 @@ else writes to, or layer 3 becomes noise and stops being read.
 **Then it fired again, sixty times harder, and settled the architecture.** `verify --root
 D:\iCloudPhotos\Photos` returned exit 2 with **`CONTRACT VIOLATED — 500 file(s) drifted`**
 roughly twenty minutes after the snapshot — every one `ADDED`, none of them ours. iCloud's
-sync engine wrote them. Over the same session the library grew 15,255 → 19,508 media files.
+sync engine wrote them. Over the same session the library grew by roughly 28% (§4.0).
 
 The OneDrive incident showed a verifier can be made noisy by an occasional writer. This shows
 something stronger: **against a live sync root, layer 3 is not noisy, it is inoperative.** A
@@ -811,7 +823,7 @@ architecture as settled and that was a mistake.
 | Sidecars at `derived/sidecars/<hash>.xmp` feed Immich | ❌ **impossible** — requires `<filename>.jpg.xmp` adjacent to the media file. Resolved by writing beside the working copy (§4.8) |
 | Layer 3 works against the real library root | ❌ **false for the sync root** — 500 files drifted in ~20 min against `D:\iCloudPhotos\Photos` (§5). Works only against the isolated working copy |
 | `C:` and `D:` iCloud paths are two libraries | ❌ **false** — `C:\Users\terri\iCloudPhotos` is a junction to `D:\iCloudPhotos`; one library, already on D: |
-| "The library contains no HEIC" | ❌ **false** — 71% HEIC (12,141 of 17,257). The USB-transfer argument rested on this |
+| "The library contains no HEIC" | ❌ **false** — 71% HEIC, holding at that ratio across two measurements ten thousand files apart (§4.0). The USB-transfer argument rested on this |
 | `(n)` filename variants are duplicates | ❌ **false** — 4,299 of 4,330 differ in size from their base; only 21 match. Filename is not an identity key here |
 | `household_prior` available once we have real data | ❌ **structurally unavailable** — flat single-folder tree, no folders to compare (§4.4) |
 | Cross-age degradation is severe | ✅ **measured** — 30.7% TAR at 0–6 mo vs 64.7% at 2.5–3 y; 14.9% at a 20–24 mo gap ([ITLF](https://arxiv.org/html/2601.01680)) |
@@ -829,8 +841,9 @@ them. Everything downstream of stage 0 is unwritten**, and the interesting part 
 hypothesis. If cross-age chaining does not work, this design's premise collapses and the answer
 is probably "use Immich's clustering and hand-merge the child's identities once a year."
 
-**The blocker still outranks all of it, and its remedy changed on 2026-07-25.** Every one of
-the 19,508 media files under `D:\iCloudPhotos\Photos` is a dehydrated stub. Of the 140 local
+**The blocker still outranks all of it, and its remedy changed on 2026-07-25.** Every media
+file under `D:\iCloudPhotos\Photos` is a dehydrated stub — 100% of them, at every count §4.0
+has taken. Of the 140 local
 files under the OneDrive root, 134 are game screenshots and 4 are stray PNGs — leaving
 **exactly 2 real photographs**, one a genuine iPhone 13 Pro original. Two assets is enough to
 smoke-test a decoder and nowhere near enough to prototype §4.4, which needs one child across
@@ -869,26 +882,46 @@ data-acquisition decision rather than an engineering one, and it still gates eve
 
 Two corrections worth keeping visible.
 
-The Pillow migration was justified partly by HEIC support, and the census then found the
-library contains **no HEIC** (iCloud for Windows converts to JPEG on sync). The migration was
-still right — the hand-rolled parser had never read a real camera file, and its fixture shared
-an author with the parser — but the reason changed after the fact, and a doc that quietly kept
-the original justification would be telling you something false.
+The Pillow migration was justified partly by HEIC support. A census then appeared to refute
+that justification — it reported the library contained **no HEIC**, attributed to iCloud for
+Windows converting to JPEG on sync — and an earlier revision of this file recorded the
+refutation as settled fact. **The refutation was wrong.** HEIC is 71% of the library (§4.0,
+§10). The original justification stands, and it stands alongside the migration's other reason:
+the hand-rolled parser had never read a real camera file, and its fixture shared an author
+with the parser.
+
+The lesson that replaces it is the better one. That census was run against a mid-sync,
+junction-doubled root — two paths to one library, counted twice, while iCloud was still
+writing. It returned a confident, specific, wrong answer, and that answer reached this
+document and changed an architecture decision (it was the whole argument for pulling originals
+off the phone over USB). No test failed, because no test was involved. It is the pattern named
+below, escaping the test suite into measurement: **an input that could not exercise the
+claim.** The format finding was generalized from the only assets the census could actually
+read — 138 of them, of which 134 were game-overlay screenshots and none were photographs
+(§4.0). The iCloud library's own files were 100% dehydrated and contributed two assets. A
+sample of Overwolf JPEGs was allowed to answer a question about a family photo archive.
 
 The previous revision said "stage 0 exists today" and then described stages 1–9 in the present
 tense with `store.` calls that resolve to nothing. That reads as a codebase six modules further
 along than it is. Everything unwritten is now marked at its heading, and the module it would
 live in is named as absent.
 
-**And the one worth naming as a pattern, because it is now three for three.** The contract
+**And the one worth naming as a pattern, because it is now four for four.** The contract
 guard was tested in isolation while two call paths bypassed it. The hand-rolled EXIF parser
 was validated against a fixture written by its own author. `dupes` was tested only on a
 byte-identical copy — the one input on which the phase that exists to catch collisions cannot
-fail. Each time the property was asserted in a doc, marked ✅, and backed by a green test that
-could only ever pass. This project's characteristic defect is not a missing test; it is a test
-whose input cannot exercise the claim. The standing question for anything marked ✅ here is
-**"what input would make this fail, and is it in the suite?"** — T7 in `test_contract_paths.py`
-and `TestFingerprintCollision` are what answering that honestly looks like.
+fail. And the "no HEIC" census read 138 game screenshots and reported on a family photo
+archive. Each time the property was asserted in a doc, marked ✅, and backed by a green result
+that could only ever come out that way.
+
+This project's characteristic defect is not a missing check; it is **a check whose input cannot
+exercise the claim.** Three of the four were tests, which made the fourth easy to miss — the
+census was not a test, nobody thought to ask what would make it fail, and it changed an
+architecture decision before anyone did. The standing question for anything marked ✅ here is
+**"what input would make this fail, and did the thing that produced this number ever see
+one?"** — T7 in `test_contract_paths.py` and `TestFingerprintCollision` are what answering that
+honestly looks like on the test side. On the measurement side, the answer is §4.0's habit of
+recording what a number could not have known.
 
 ---
 

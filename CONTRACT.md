@@ -70,9 +70,15 @@ The pipeline never edits your photos. It emits, all under `derived/`:
 
 - `index.db` — SQLite, content-keyed. Scores, faces, clusters, tags.
 - `manifest.jsonl` — the layer-3 tree snapshot.
-- XMP **sidecar** files (later stages) — `IMG_1234.jpg.xmp` alongside the original, which is
-  the industry-standard non-destructive tagging mechanism. Even these are opt-in and land in
-  `derived/sidecars/` by default rather than next to the originals.
+- XMP **sidecar** files (later stages) — `IMG_1234.heic.xmp`, written *beside the media file in
+  the working copy*, which is the industry-standard non-destructive tagging mechanism. This is
+  not a preference: Immich resolves a sidecar only as `<filename>.<ext>.xmp` adjacent to its
+  media file, so a sidecar anywhere else cannot reach the consumer it exists for. The working
+  copy is not an original — the originals are the iCloud library and the phone — so writing
+  next to it breaks nothing here. Writing beside the *source* tree stays forbidden. See
+  "Why the pipeline runs against a working copy" below.
+- `derived/sidecars/` — retained only as an **export format** for tools that accept a sidecar
+  by path. It is not the default and it can never feed Immich.
 - Album manifests — lists of paths, not copies. Materialize them as symlinks or hardlinks if
   you want browsable folders; both leave the originals in place and cost no disk.
 
@@ -117,8 +123,9 @@ library it points at must be one nothing else writes to (see below).
 
 Measured 2026-07-25: `verify --root D:\iCloudPhotos\Photos` returned **`CONTRACT VIOLATED —
 500 file(s) drifted`** in roughly twenty minutes, every one of them `ADDED`. Nothing of ours
-wrote a byte; iCloud's sync engine did. The library grew from 15,255 to 19,508 media files
-over the course of a single working session.
+wrote a byte; iCloud's sync engine did. The library grew roughly 28% over that single working
+session and has kept growing since — figures and the growth curve live in `CALL_TREE.md` §4.0,
+which is the only place that carries absolute counts for this library.
 
 Layer 3 cannot function against a root another process actively manages. This is the same
 lesson the OneDrive incident taught — a verifier that cries wolf stops being read — but
