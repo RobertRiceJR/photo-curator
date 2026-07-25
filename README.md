@@ -33,18 +33,26 @@ defaults to `./derived`, and may never resolve inside the library — the contra
 
 ## What the first real run found
 
-`C:\Users\terri\iCloudPhotos\Photos` — 33,095 media files, **33,093 of them dehydrated cloud
-placeholders**. Broken down: 31,844 images (108.4 GB) and 1,251 videos (367.2 GB), against
-64 GB free on `C:`.
+The library is at `D:\iCloudPhotos\Photos` — **19,508 media files, 201 GB, every one of them a
+dehydrated cloud placeholder**, and still growing as iCloud syncs. `C:\Users\terri\iCloudPhotos`
+is a *junction* to it, not a second library.
 
-Three consequences, all of which outrank any code in this repo:
+Four consequences, all of which outrank any code in this repo:
 
-- **No stage past 0 can read a byte** until the files are local. Hydrating in place is not
-  possible on the system drive; `D:` and `F:` have room.
-- **There is no HEIC.** iCloud for Windows stores JPEG-converted copies, so this library is
-  already a lossy derivative of the originals still on the phone. That matters for a project
-  whose premise is fidelity.
-- **The count is ~33k, not 100k.** Whatever else exists is on the phone or cloud-side only.
+- **No stage past 0 can read a byte** until the files are local. Zero assets are indexed.
+- **Hydrating in place is now possible** — 201 GB against 930 GB free on `D:`. An earlier
+  revision of this file said it was not, because it believed the library was a 475 GB tree on
+  `C:` with 64 GB free. That was two paths to one library counted twice.
+- **HEIC is 71% of the files**, not absent. An earlier revision said there was none and
+  concluded the library was a lossy JPEG derivative of originals still on the phone. It is
+  not, and that removes the main argument for a USB pull.
+- **The pipeline cannot run against this root.** `verify` returned 500 drifted files in
+  twenty minutes — iCloud writing, not us. Work happens on an isolated copy; see
+  [CONTRACT.md](CONTRACT.md).
+
+The `(n)` suffix on ~4,000 files is *not* duplication: 4,299 of 4,330 variants differ in size
+from their base. They are distinct photos that collided on filename because iPhone recycles
+`IMG_nnnn`. A name-based dedup here would delete thousands of real photographs.
 
 ## Why the pipeline is staged
 
@@ -52,15 +60,21 @@ Each stage is idempotent and keyed by content fingerprint, so any of them can be
 and resumed. This is not fastidiousness — face embedding 100k photos runs for hours, and a
 job you cannot resume is a job you will never finish.
 
+Numbering is [CALL_TREE.md](CALL_TREE.md)'s 0–9 — the two files used to disagree, and this
+table was the one that gave.
+
 | Stage | Does | Status |
 |---|---|---|
 | 0 · inventory | walk, fingerprint, EXIF, census | **built** |
-| 1 · near-dup | perceptual hash, burst grouping | designed |
-| 2 · faces | detect, embed, per-window cluster | designed |
-| 3 · identity | chain clusters across years, label once | designed |
-| 4 · quality | blur/exposure/eyes-open, then aesthetic score | designed |
-| 5 · selection | segment into events, pick best-of-per-event | designed |
-| 6 · export | XMP sidecars, album manifests, Immich tags | designed |
+| 1 · derive | decode once, normalize, cache | designed |
+| 2 · similar | perceptual hash, burst grouping | designed |
+| 3 · faces | detect, embed, crop sharpness | designed |
+| 4 · identity | chain clusters across years, label once | designed |
+| 5 · quality | blur/exposure/eyes-open, then aesthetic score | designed |
+| 6 · events | segment by time and location gap | designed |
+| 7 · select | pick best-of-per-event | designed |
+| 8 · export | XMP sidecars, album manifests, Immich person push | designed |
+| 9 · evaluate | score identity and selection against a holdout | designed |
 
 ## The two design decisions that matter
 
@@ -82,14 +96,28 @@ against a hand-labeled sample.
 
 ## Immich is the substrate, not the system of record
 
-Research (see the `dd` and `scorecard` briefs in the companion research repo) landed on
-Immich for storage, browsing, face *detection*, and semantic search. But its iOS ingestion is
-lossy — it drops Apple Photos edit history, portrait/cinematic depth, and `.AAE` sidecars,
-keeping only the rendered image — so letting it own the library breaks the contract before
-any of our code runs.
+Research (see the `dd`, `scorecard` and stack briefs in the companion research repo) landed on
+Immich for storage, browsing and semantic search. But its iOS ingestion is lossy — it drops
+Apple Photos edit history, portrait/cinematic depth, and `.AAE` sidecars, keeping only the
+rendered image — so letting it own the library breaks the contract before any of our code runs.
 
-Immich is therefore mounted as an **external library** over the existing tree, read-only. It
-is the viewer and the face detector. This project is the system of record.
+Immich is therefore mounted as an **external library** over the working copy, read-only. It is
+the viewer, the star-rating and tag search, and the CLIP semantic search. This project is the
+system of record.
+
+**It is not the face detector.** An earlier revision of this file said it was. Three separate
+reports show face detection not running over external libraries at all
+([23879](https://github.com/immich-app/immich/issues/23879),
+[23131](https://github.com/immich-app/immich/issues/23131),
+[23880](https://github.com/immich-app/immich/discussions/23880) — `facesRecognizedAt` NULL on
+external assets while uploaded assets carry timestamps). And it would not matter if it did:
+stage 4 needs raw per-face embeddings to chain identity across years, and Immich exposes
+people and faces but never the vectors underneath. Detection and embedding stay in-house at
+stage 3.
+
+The mount must end in `:ro`. Immich's own docs warn that without it, "Immich will be able to
+delete the files in this folder" — which makes it a third-party writer with delete rights
+pointed at your photos.
 
 ## Verification
 

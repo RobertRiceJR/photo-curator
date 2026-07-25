@@ -107,11 +107,12 @@ either re-run everything on every tweak (hours) or hand-track staleness (wrong).
 first structural piece the current code is missing, and nothing downstream is safe to build
 without it.
 
-`❓` **Stage numbering is contradicted by README.md.** This document numbers 0–9 with `derive`
-as stage 1. `README.md`'s status table numbers 0–6, has no `derive` stage, and folds `events`
-into selection — so "stage 3" means *faces* here and *identity* there. One of the two has to
-give. This file's numbering is the more complete one because it names the decode cache, which
-is load-bearing (§6).
+`✅` **Stage numbering resolved 2026-07-25 — this file's 0–9 is canonical.** It previously
+collided with `README.md`, which numbered 0–6, had no `derive` stage, and folded `events` into
+selection, so "stage 3" meant *faces* here and *identity* there. This numbering wins because
+it names the decode cache, which is load-bearing (§6), and separates `events` from `select`,
+which are different operations on different inputs. `README.md`'s table has been rewritten to
+match; there is now one numbering.
 
 ---
 
@@ -201,19 +202,46 @@ cmd_inventory(args)                                        inventory.py:64
 real download. Both flags are load-bearing on this machine and neither was in the previous
 version of this document.
 
-**What it found on the real machine (2026-07-25).** Two indexes exist, and the story is worse
-than the last revision recorded.
+**What it found on the real machine (2026-07-25, revised same day).** Three indexes exist.
 
 | index | root | walked | placeholders | indexed |
 |---|---|---|---|---|
 | `derived/` | `C:\Users\terri\OneDrive\Pictures` | 397 | 259 (65%) | **138** |
 | `derived-icloud/` | `C:\Users\terri\iCloudPhotos\Photos` | 33,095 | 33,093 (99.99%) | **2** |
+| `derived-d/` | `D:\iCloudPhotos\Photos` | 16,756 | 16,756 (100%) | **0** |
 
-The iCloud library holds 31,844 images (108.4 GB) and 1,251 videos (367.2 GB) against 64 GB
-free on `C:`. Effectively all of it is dehydrated stubs, so no stage can read a byte without
-hydration, and hydrating in place is not possible on the system drive. It also contains **no
-HEIC at all** — iCloud for Windows stores JPEG-converted copies, so this library is already a
-lossy derivative of the originals still on the phone.
+`❗` **Three facts in the previous revision were wrong. All three mattered.**
+
+**`C:\Users\terri\iCloudPhotos` is a junction to `D:\iCloudPhotos`** — reparse tag
+`0xa0000003`, substitute name `\??\D:\iCloudPhotos`. There is one library and it already lives
+on D:. The two "separate" iCloud indexes above walked the same bytes through two paths, which
+is the multi-path case `paths`/`assets` exists to handle and the likeliest explanation for the
+33,095 figure. **The storage blocker is resolved**: ~201 GB of library against 930 GB free.
+
+**There is HEIC, and it is the dominant format** — 12,141 of 17,257 files (71%) at the time of
+measurement. The claim that iCloud for Windows stores only JPEG conversions is false for this
+library, which removes the main argument for pulling originals off the phone over USB. The
+files are real iPhone HEICs and carry EXIF, so `same_device` in §4.4 will be populated once
+they are readable.
+
+**The library is mid-sync and was growing throughout the session** — media file count
+measured at 15,255 → 15,505 → 16,506 → 16,756 → 17,035 → 17,257 → **19,508 (201.1 GB)** over
+roughly ninety minutes. Any census taken against this root is a moving target, including the
+one in the table above. The final size is not yet known.
+
+**It is still 100% dehydrated.** Zero assets indexed, zero bytes readable. The blocker is
+unchanged in force, only in remedy: hydrate in place on D: (now possible) rather than pull
+from the phone.
+
+**`(n)` filename variants are not duplicates.** 4,047 files carry an `(n)` suffix, which reads
+as ~24% waste and invites a name-based collapse. Tested: **4,299 of 4,330 variants differ in
+size from their same-extension base; only 21 match.** These are distinct photographs that
+collided on filename because iPhone recycles `IMG_nnnn` across devices and restores. Filename
+is not an identity key in this library, a name-based dedup would have destroyed thousands of
+real photos, and the content fingerprint in `inventory.fingerprint` is doing necessary work
+rather than being fastidious.
+
+**The tree is a single flat folder** — 19,508 files, no subdirectories. §4.4 depends on this.
 
 **The 138 "readable" OneDrive assets are not photographs.** 134 of them are
 `OneDrive\Pictures\Overwolf\MetaTFT\*.jpeg` — game-overlay screenshots — and the remaining 4
@@ -381,9 +409,36 @@ stage 9, not chosen by argument. This section is the single largest source of ri
 and the first thing that should be prototyped on a few hundred photos before anything else here
 is built.
 
-**Note what §4.0 means for this.** `same_device` reads EXIF Make/Model, and `household_prior`
-reads folder structure. On the currently-indexed data both are null for 100% of assets. The
-prototype needs real camera files before it can say anything at all.
+**How bad the aging problem actually is, measured.** The previous revision asserted the
+premise without a number. On the ITLF longitudinal infant-and-toddler benchmark — FaceNet,
+ArcFace, MagFace and CosFace over 630 images of 30 subjects across seven sessions — the best
+model scored **30.7% TAR at 0–6 months against 64.7% at 2.5–3 years**, and fell to **14.9% TAR
+once the enrolment-to-verification gap reached 20–24 months**
+([arxiv 2601.01680](https://arxiv.org/html/2601.01680)). The authors conclude recognition
+"becomes increasingly feasible" only after roughly age 2.5–3, and that multi-year reliability
+"remains fundamentally limited." That is the gap this stage exists to close, and it is wider
+than the design assumed.
+
+`❗` **`household_prior` is structurally unavailable — corrected 2026-07-25.** The previous
+revision said `same_device` and `household_prior` were "null for 100% of assets" and that the
+prototype merely needed real camera files. Half of that is now wrong in a way no amount of
+data fixes: **the library is a single flat folder with no subdirectories** (§4.0), so
+"appears in the same folders" has no signal to read. Not null-until-hydrated — permanently
+absent for this library.
+
+So the cost function has **three usable terms, not four**:
+
+```
+  cosine(centroid_a, centroid_b)     available · weakest signal for a child
+− λ₁ · co_occurrence(a, b)           available · now carrying more weight than planned
+− λ₂ · same_device(a, b)             available once hydrated — real iPhone HEICs with EXIF
+− λ₃ · household_prior(a, b)         ✗ STRUCTURALLY UNAVAILABLE — flat tree, no folders
+```
+
+This raises the stakes on co-occurrence rather than lowering them. It was already described
+below as "the strongest signal"; it is now the only structural signal, with the embedding
+term measured to be weak exactly where it matters most. If co-occurrence does not carry the
+chain, there is no third thing to fall back on.
 
 ### 4.5 `cmd_quality` — objective first, taste second ❓ *(not built)*
 
@@ -445,16 +500,45 @@ the 25 km term or `meta.py` grows a GPS reader first.
 cmd_export(args)                                           export.py
 ├─ 🔒 contract.guard_output(..., library_root) on each output path
 ├─ "manifest"  ≫ derived/albums/<person>-<year>.json    ← lists of paths, source of truth
-├─ "xmp"       ≫ derived/sidecars/<hash>.xmp            ← rating + keywords, industry standard
+├─ "xmp"       ≫ <workcopy>/<filename>.<ext>.xmp        ← rating + tags; name is NOT ours to pick
 ├─ "links"     ≫ derived/albums/<person>-<year>/*.lnk   ← hardlinks; 0 bytes, browsable
-└─ "immich"    ⇒ NET  POST /api/albums, /api/assets/tags   [best-effort, opt-in]
+└─ "immich"    ⇒ NET  POST /api/people  then  POST /api/faces   [best-effort, opt-in]
      └─ requires IMMICH_URL + IMMICH_API_KEY from its own env read, never the pipeline's
 ```
 
-Sidecars land in `derived/sidecars/` by default rather than beside the originals. Writing
-`IMG_1234.jpg.xmp` next to `IMG_1234.jpg` is standard practice and still technically
-non-destructive, but it puts new files in your library tree and trips layer 3. If you want that,
-it should be an explicit `--inplace-sidecars` flag and a conscious choice.
+**Both far-side contracts were wrong in the previous revision — corrected 2026-07-25.**
+
+`❗` **The sidecar path could never have worked.** It read
+`≫ derived/sidecars/<hash>.xmp`. Immich resolves a sidecar only as `<filename>.jpg.xmp`
+adjacent to its media file, with `<filename>.xmp` as a fallback; a bare content hash in a
+separate directory is unreadable at any price
+([xmp-sidecars](https://docs.immich.app/features/xmp-sidecars/)). The old note framed
+in-place sidecars as an optional `--inplace-sidecars` nicety. It is not optional — it is the
+only form the consumer can read.
+
+What resolves the tension is the working copy (§4.0). Sidecars land beside the **working
+copy**, never beside the source tree, so Immich gets the adjacency it requires and layer 3
+still guards the originals. `derived/sidecars/` survives only as an export format for tools
+that accept an arbitrary path.
+
+`❗` **The Immich endpoints named neither of the things we need.** `POST /api/albums` and
+`/api/assets/tags` carry no person label. The pair that does is `POST /api/people` to create
+the person, then `POST /api/faces` with `{assetId, personId, imageWidth, imageHeight, x, y,
+width, height}`, which requires the `face.create` permission
+([walkthrough](https://gist.github.com/skatsubo/3beda82b175277aa50fdbddf5ed1fefa)).
+
+Three limits on that route, none of them obvious from the endpoint list:
+
+- The only published walkthrough supplies **zero-dimension placeholder boxes** and then adds
+  the real face by hand. Pushing genuine coordinates at scale is unproven and needs a probe.
+- The sidecar alternative for faces is narrower still: Immich reads face regions only in
+  **digiKam format**, assets carrying face metadata **skip face detection entirely**, those
+  faces never join recognition clustering, and grouping degrades to name matching
+  ([PR 6455](https://github.com/immich-app/immich/pull/6455), v1.114.0).
+- Immich extracts exactly **five** fields from a sidecar — description, rating, date/time,
+  GPS, tags. Everything else, including any custom score, stays in the `.xmp` and is
+  explicitly not searchable. Star rating and tags are first-class search filters, so the
+  quality score has a real delivery surface; nothing else does.
 
 ### 4.9 `cmd_evaluate` — the honesty gate ❓ *(not built)*
 
@@ -525,6 +609,23 @@ mechanism works end to end. It also proves something about the *root*: `OneDrive
 shared OS folder with active third-party writers, so it is not a library you can bracket a
 long-running job around. Whatever root the real pipeline runs against has to be one nothing
 else writes to, or layer 3 becomes noise and stops being read.
+
+**Then it fired again, sixty times harder, and settled the architecture.** `verify --root
+D:\iCloudPhotos\Photos` returned exit 2 with **`CONTRACT VIOLATED — 500 file(s) drifted`**
+roughly twenty minutes after the snapshot — every one `ADDED`, none of them ours. iCloud's
+sync engine wrote them. Over the same session the library grew 15,255 → 19,508 media files.
+
+The OneDrive incident showed a verifier can be made noisy by an occasional writer. This shows
+something stronger: **against a live sync root, layer 3 is not noisy, it is inoperative.** A
+game overlay writes to your library by accident; iCloud writes to it as its entire purpose.
+There is no threshold that separates its writes from ours.
+
+Hence the working copy. The pipeline runs against a hydrated copy on a drive nothing else
+touches, materialized by `robocopy` with no deleting or moving flag — read-only with respect
+to the source by construction, and no code in this package participates in it. That is not a
+performance or fidelity decision; **it is the only way to keep layer 3 at all**, and the
+contrast is the proof: the same command that returns 500 drifted files against `D:` must
+return `CONTRACT HELD` against the working copy.
 
 **Layer 3's blind spot, and why layer 2 is structural.** `contract.SKIP_DIRS` prunes `derived/`,
 so a database created at `<library>/derived/index.db` produces *zero* drift from `verify`. That
@@ -704,6 +805,16 @@ architecture as settled and that was a mistake.
 | `discover` locates a library from stat alone | ✅ built |
 | Exit codes survive `run.cmd` | ✅ verified — verify=2, census=0 |
 | Immich as external library, not owner | Inference from the dd brief's lossy-iOS finding. Sound, untested |
+| Immich as the **face detector** over that external library | ❌ **contradicted** — three reports show face detection not running on external libraries ([23879](https://github.com/immich-app/immich/issues/23879), [23131](https://github.com/immich-app/immich/issues/23131), [23880](https://github.com/immich-app/immich/discussions/23880): `facesRecognizedAt` NULL). Moot regardless — it never exposes per-face embeddings, which §4.4 requires |
+| Immich mount is safe by default | ❌ **false** — a volume not ending `:ro` lets Immich delete the files ([libraries docs](https://docs.immich.app/features/libraries/)). `:ro` is now a contract concern |
+| Person labels can be pushed back into Immich | Endpoints confirmed — `POST /api/people` then `POST /api/faces`, `face.create` permission. **Real bounding boxes at scale unproven**; the only published walkthrough uses zero-dimension placeholders |
+| Sidecars at `derived/sidecars/<hash>.xmp` feed Immich | ❌ **impossible** — requires `<filename>.jpg.xmp` adjacent to the media file. Resolved by writing beside the working copy (§4.8) |
+| Layer 3 works against the real library root | ❌ **false for the sync root** — 500 files drifted in ~20 min against `D:\iCloudPhotos\Photos` (§5). Works only against the isolated working copy |
+| `C:` and `D:` iCloud paths are two libraries | ❌ **false** — `C:\Users\terri\iCloudPhotos` is a junction to `D:\iCloudPhotos`; one library, already on D: |
+| "The library contains no HEIC" | ❌ **false** — 71% HEIC (12,141 of 17,257). The USB-transfer argument rested on this |
+| `(n)` filename variants are duplicates | ❌ **false** — 4,299 of 4,330 differ in size from their base; only 21 match. Filename is not an identity key here |
+| `household_prior` available once we have real data | ❌ **structurally unavailable** — flat single-folder tree, no folders to compare (§4.4) |
+| Cross-age degradation is severe | ✅ **measured** — 30.7% TAR at 0–6 mo vs 64.7% at 2.5–3 y; 14.9% at a 20–24 mo gap ([ITLF](https://arxiv.org/html/2601.01680)) |
 | CLIP+MLP for aesthetics, NIMA for technical | From the scorecard brief. Never run on family photos |
 | `pipeline.py` DAG + invalidation | ❓ **not built** — nothing tracks per-asset stage state |
 | Unattended runner (`run-all.ps1`) | ❓ **not built** — the "primary path" is a paragraph |
@@ -718,13 +829,22 @@ them. Everything downstream of stage 0 is unwritten**, and the interesting part 
 hypothesis. If cross-age chaining does not work, this design's premise collapses and the answer
 is probably "use Immich's clustering and hand-merge the child's identities once a year."
 
-**The blocker still outranks all of it, and is sharper than "hydrate first".** Across both
-indexed roots, 33,352 of 33,492 media files are dehydrated cloud stubs. Of the 140 that are
-local, 134 are game screenshots and 4 are stray PNGs — leaving **exactly 2 real photographs**,
-one of them a genuine iPhone 13 Pro original. Two assets is enough to smoke-test a decoder and
-nowhere near enough to prototype §4.4, which needs one child across many years. That is a
-storage and data-acquisition decision, not an engineering one, and it gates the entire
-pipeline.
+**The blocker still outranks all of it, and its remedy changed on 2026-07-25.** Every one of
+the 19,508 media files under `D:\iCloudPhotos\Photos` is a dehydrated stub. Of the 140 local
+files under the OneDrive root, 134 are game screenshots and 4 are stray PNGs — leaving
+**exactly 2 real photographs**, one a genuine iPhone 13 Pro original. Two assets is enough to
+smoke-test a decoder and nowhere near enough to prototype §4.4, which needs one child across
+many years.
+
+What changed is the cure, not the diagnosis. The library is already on `D:` with 930 GB free,
+so **hydrating in place is now possible** — it was not, when the library was believed to be a
+475 GB tree on a system drive with 64 GB free. And because HEIC turns out to be 71% of the
+files rather than absent, pulling originals off the phone over USB is no longer the better
+route; it is a check on what the cloud may be missing, not the primary path.
+
+The sequence is therefore: let the sync settle (it is still growing), hydrate, copy to an
+isolated working root so layer 3 becomes operative, then index. It remains a storage and
+data-acquisition decision rather than an engineering one, and it still gates everything.
 
 ---
 
@@ -742,7 +862,10 @@ pipeline.
 | GPS | not extracted | needed by stage 6's 25 km rule | pending §4.6 |
 | Aesthetic scoring | none | gated pass 2, tiebreaker only | pending §4.5 |
 | Exact dedup | digests one member, cannot detect a false collision | compare all members, split divergent assets | **known gap** — §4.0.1, pinned by test |
-| Stage numbering | README says 0–6, this file says 0–9 | pick one | **unresolved** — see §2 |
+| Stage numbering | ~~README 0–6 vs this file 0–9~~ | one numbering, 0–9 | ✅ **resolved** — README rewritten to match, see §2 |
+| Immich's role | ~~viewer + face detector + search~~ | viewer + search only | ✅ **corrected** — §4.8, §10, CONTRACT.md |
+| Sidecar location | ~~`derived/sidecars/<hash>.xmp`~~ | `<filename>.<ext>.xmp` beside the working copy | ✅ **corrected** — the old path was unreadable by the consumer |
+| Pipeline root | ~~the iCloud library itself~~ | an isolated working copy on another drive | ✅ **corrected** — §5, 500-file drift |
 
 Two corrections worth keeping visible.
 
