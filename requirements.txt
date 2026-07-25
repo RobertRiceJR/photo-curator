@@ -1,0 +1,12 @@
+# Stage 0 needs exactly two packages, both only for reading image metadata.
+#
+# This project is NOT stdlib-only. That rule belongs to the research repo this grew out of,
+# which scopes it to its own v0 ("v0 is intentionally stdlib-only so a fresh or scheduled
+# run is never held up by pip") -- it was never a rule here, and importing it cost a
+# hand-rolled TIFF/IFD parser that had never read a real camera file.
+#
+# Later stages will add onnxruntime and numpy. Pinned loosely: these are stable APIs and a
+# personal project should not fight resolver churn.
+
+pillow>=11.0            # decode + EXIF for every mainstream format
+pillow-heif>=0.18       # .heic/.heif, which Pillow does not handle natively

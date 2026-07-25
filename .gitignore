@@ -1,0 +1,6 @@
+# All derived state is regenerable and can be large. The library is never in here.
+# Glob, not a fixed name: --derived puts scratch indexes at derived-icloud/ and friends.
+derived*/
+__pycache__/
+*.pyc
+.venv/
